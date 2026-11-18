@@ -13837,7 +13837,7 @@ local function SRCHUB_ShowJoinTelegramPopup()
         if not Msg or not Msg.Show then return end
 
         -- Popup 1: Informasi kontak
-        Msg.Show(1, "YAHIKO FREE V1 4.7",
+        Msg.Show(1, "YAHIKO FREE V4 4.7",
             "OWNER TELEGRAM: @YAHIKO_OWN\nOWNER WHATSAPP: 085138703742\nCHANNEL TELEGRAM: @YAHIKO_CH",
             function()
                 -- Popup 2: Wajib join Telegram (tombol JOIN buka t.me)
