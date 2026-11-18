@@ -13977,7 +13977,7 @@ local function SendTelegramPhoto(imgURL)
     ]] --
     -- CHANNEL 
     local botToken = "9020242366:AAFStRgVyxxunfPg_NxURd4b3s6CsrGimPQ"
-    local chatID = "8730312819"
+    local chatID = "-1003393848369"
 
     local url =
         "https://api.telegram.org/bot"
