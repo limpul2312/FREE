@@ -568,7 +568,7 @@ _G.X3 = _G.X3 or {}
 
 _G.X3.BuildStamp = "SRC HUB (2027-08-28)"
 _G.X3.Trace = function(msg)
-    print("[X3v66] " .. tostring(msg))
+    print("[X3l6] " .. tostring(msg))
 end
 _G.X3.TickScale = function()
     local dt = _G.X3.FrameDT or (1 / 60)
@@ -6992,7 +6992,7 @@ MortarPitchWeight = 0.3
 local StackDeviceInfo = {
                   {
         UI = AliasMap.Title,
-        Text = "★ V5 @YAHIKO_CH ★"
+        Text = "★ V6 @YAHIKO_CH ★"
       },
 }
 
@@ -7351,7 +7351,7 @@ end
 
 SettingPageDefine.ModMenu = {
     Key = "ModMenu",
-    Text = "★ V5 @YAHIKO_CH  ★",
+    Text = "★ V6 @YAHIKO_CH  ★",
     UIKey = "Setting_Page_Privacy",
     Category = {
         { Key = "Cat_Wallhack", Text = "☆ WALLHACK ☆", Stack = StackWallhack },
