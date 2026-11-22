@@ -6938,8 +6938,71 @@ _G.X3.ReadLiveConfig = function()
     if _G.X3.SaveModSettings then _G.X3.SaveModSettings() end
 end
 
+-- Re-inject ModMenu into SettingCatalog + ensure UIManager hook (lightweight, safe to call every tick)
+function _G.X3.EnsureModMenuRegistered()
+    local page = _G.X3._CachedModMenuPage
+    if type(page) ~= "table" then
+        return false
+    end
+    local okSPD, SettingPageDefine = pcall(require, "client.logic.NewSetting.SettingPageDefine")
+    local okSC, SettingCatalog = pcall(require, "client.logic.NewSetting.SettingCatalog")
+    if not okSPD or not okSC or type(SettingPageDefine) ~= "table" or type(SettingCatalog) ~= "table" then
+        return false
+    end
+    SettingPageDefine.ModMenu = page
+    local catDone = false
+    for ci, pg in ipairs(SettingCatalog) do
+        if type(pg) == "table" and pg.Key == "ModMenu" then
+            SettingCatalog[ci] = page
+            catDone = true
+            break
+        end
+    end
+    if not catDone then
+        table.insert(SettingCatalog, page)
+    end
+
+    local UIManager = _G.UIManager
+    if UIManager and not UIManager._IsModMenuHooked then
+        local old_ShowUI = UIManager.ShowUI
+        UIManager.ShowUI = function(config, ...)
+            local args = {...}
+            local n = select('#', ...)
+            if config and config.keyName then
+                local kn = string.lower(tostring(config.keyName))
+                if string.find(kn, "setting_main") or string.find(kn, "setting") then
+                    local catalog = args[1]
+                    if type(catalog) == "table" then
+                        local pageDef = _G.X3._CachedModMenuPage
+                        if type(pageDef) == "table" then
+                            local catReplaced = false
+                            for pi, p in ipairs(catalog) do
+                                if type(p) == "table" and p.Key == "ModMenu" then
+                                    catalog[pi] = pageDef
+                                    catReplaced = true
+                                    break
+                                end
+                            end
+                            if not catReplaced then
+                                table.insert(catalog, pageDef)
+                            end
+                        end
+                    end
+                end
+            end
+            local table_unpack = table.unpack or unpack
+            return old_ShowUI(config, table_unpack(args, 1, n))
+        end
+        UIManager._IsModMenuHooked = true
+    end
+    return true
+end
+
 function _G.X3.InitModMenuTab()
-    if _G.X3.ModMenuInitialized and _G.X3.ModMenuBuiltStamp == _G.X3.BuildStamp then return true end
+    -- Already built once: only re-ensure registration (catalog may have been rebuilt by game)
+    if _G.X3.ModMenuInitialized and _G.X3.ModMenuBuiltStamp == _G.X3.BuildStamp and type(_G.X3._CachedModMenuPage) == "table" then
+        return _G.X3.EnsureModMenuRegistered()
+    end
 
     _G.X3.XthrlenState.CustomTextData = _G.X3.XthrlenState.CustomTextData or {
         OuterSpeed = 10, InnerSpeed = 10, OuterRecoil = 0, HRecoil = 0.3, VRecoil = 0.3, MagicHead = 1.0, MagicBody = 1.0, MagicLegs = 1.0, IpadViewFOV = 120,
@@ -7363,6 +7426,9 @@ SettingPageDefine.ModMenu = {
     }
 }
 
+        -- Cache page definition so EnsureModMenuRegistered can re-inject after UI rebuild
+        _G.X3._CachedModMenuPage = SettingPageDefine.ModMenu
+
         local catDone = false
         for ci, pg in ipairs(SettingCatalog) do
             if type(pg) == "table" and pg.Key == "ModMenu" then
@@ -7373,53 +7439,38 @@ SettingPageDefine.ModMenu = {
         if not catDone then table.insert(SettingCatalog, SettingPageDefine.ModMenu) end
     end
 
-    local UIManager = _G.UIManager
-    if UIManager and not UIManager._IsModMenuHooked then
-        local old_ShowUI = UIManager.ShowUI
-        UIManager.ShowUI = function(config, ...)
-            local args = {...}
-            local n = select('#', ...)
-
-            if config and config.keyName and (string.find(string.lower(config.keyName), "setting_main") or string.find(string.lower(config.keyName), "setting")) then
-                local catalog = args[1]
-                if type(catalog) == "table" then
-                    local catReplaced = false
-                    for pi, page in ipairs(catalog) do
-                        if type(page) == "table" and page.Key == "ModMenu" then
-                            catalog[pi] = SettingPageDefine.ModMenu
-                            catReplaced = true
-                            break
-                        end
-                    end
-                    if not catReplaced then
-                        table.insert(catalog, SettingPageDefine.ModMenu)
-                    end
-                end
-            end
-            local table_unpack = table.unpack or unpack
-            return old_ShowUI(config, table_unpack(args, 1, n))
-        end
-        UIManager._IsModMenuHooked = true
-    end
+    -- Always ensure UIManager hook via shared helper
+    _G.X3.EnsureModMenuRegistered()
     return true
 end
 
 local function ShowXthrlenVIPMenu()
-    if _G.X3.XthrlenMenuAlreadyShown then return end
+    -- Always try (re)register so menu survives lobby/settings rebuild.
+    -- Notify only on first successful install.
+    local now = os.clock()
+    if _G.X3._MenuEnsureLastT and (now - _G.X3._MenuEnsureLastT) < 1.0 then
+        return
+    end
+    _G.X3._MenuEnsureLastT = now
 
     _G.X3.MenuTryN = (_G.X3.MenuTryN or 0) + 1
     local ok, err = pcall(function()
         local done = _G.X3.InitModMenuTab()
         if done ~= true then error("InitModMenuTab belum siap (hasil=" .. tostring(done) .. ")", 0) end
         _G.X3.XthrlenState.MenuStep = 99
-        _G.X3.XthrlenMenuAlreadyShown = true
-        Notify("THE VIP MENU HAS BEEN ADDED TO GAME SETTINGS!\nOpen Settings to enable/disable the feature!")
+        if not _G.X3.XthrlenMenuAlreadyShown then
+            _G.X3.XthrlenMenuAlreadyShown = true
+            Notify("THE VIP MENU HAS BEEN ADDED TO GAME SETTINGS!\nOpen Settings to enable/disable the feature!")
+        end
     end)
     if type(_G.X3.Trace) == "function" then
         if ok then
-            _G.X3.Trace("MENU: InitModMenuTab SUKSES — menu VIP terpasang di lobby" .. tostring(_G.X3.MenuTryN) .. ")")
-        elseif _G.X3.MenuTryN <= 3 or (_G.X3.MenuTryN % 50) == 0 then
-            _G.X3.Trace("MENU: belum terpasang" .. tostring(_G.X3.MenuTryN) .. ", retry otomatis): " .. tostring(err))
+            if not _G.X3._MenuTraceOkLogged then
+                _G.X3._MenuTraceOkLogged = true
+                _G.X3.Trace("MENU: InitModMenuTab SUKSES — menu VIP terpasang (try=" .. tostring(_G.X3.MenuTryN) .. ")")
+            end
+        elseif _G.X3.MenuTryN <= 5 or (_G.X3.MenuTryN % 30) == 0 then
+            _G.X3.Trace("MENU: belum terpasang (try=" .. tostring(_G.X3.MenuTryN) .. "): " .. tostring(err))
         end
     end
 end
@@ -9619,6 +9670,9 @@ end
         _G.X3.XthrlenState.CustomTextData = {OuterSpeed = 10, InnerSpeed = 10, HRecoil = 0.3, VRecoil = 0.3, MagicHead = 1.0, MagicNeck = 1.0, MagicBody = 1.0, MagicPelvis = 1.0, MagicArms = 1.0, MagicLegs = 1.0, IpadViewFOV = 120, AimTouchHipPrio = 1, AimTouchHipBone = 1, AimTouchHipCond = 1, AimTouchHipSpeed = 50, AimTouchHipFOV = 30, AimTouchHipDist = 250, AimTouchSGPrio = 1, AimTouchSGBone = 2, AimTouchSGCond = 1, AimTouchSGSpeed = 80, AimTouchSGFOV = 40, AimTouchSGDist = 30, AimTouchScopePrio = 1, AimTouchScopeBone = 2, AimTouchScopeCond = 1, AimTouchScopeSpeed = 40, AimTouchScopeFOV = 20, AimTouchScopeDist = 300, AimTouchSniperPrio = 1, AimTouchSniperBone = 1, AimTouchSniperCond = 2, AimTouchSniperSpeed = 30, AimTouchSniperFOV = 20, AimTouchSniperDist = 400}
     end
 
+    -- Menu harus dicoba dulu, tidak bergantung pada GameplayData (lobby/login)
+    pcall(ShowXthrlenVIPMenu)
+
     local okData, GameplayData = pcall(require, "GameLua.GameCore.Data.GameplayData")
     if not okData or not GameplayData then return end
     local pc = GameplayData.GetPlayerController()
@@ -9630,7 +9684,6 @@ end
     if _G.X3.XthrlenConfig.FakeHWID then pcall(_G.X3.ApplyDeviceOSFakes) end
     if _G.X3.XthrlenConfig.NetBoost then pcall(function() _G.X3.ApplyNetworkBoost(true) end) end
     pcall(InitializeNativeESP)
-    pcall(ShowXthrlenVIPMenu)
     if _G.X3.LobbyVisualsTick then pcall(_G.X3.LobbyVisualsTick) end
 
     if not Valid(localPlayer) then
